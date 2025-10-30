@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nostr Relay Speed Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .control-group {
+            flex: 1;
+            min-width: 150px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.1s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .relay-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border: 2px solid #e0e0e0;
+            transition: all 0.3s;
+        }
+        .relay-card.testing {
+            border-color: #ffa726;
+            background: #fff8e1;
+        }
+        .relay-card.success {
+            border-color: #66bb6a;
+            background: #e8f5e9;
+        }
+        .relay-card.error {
+            border-color: #ef5350;
+            background: #ffebee;
+        }
+        .relay-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .relay-url {
+            font-weight: 600;
+            color: #333;
+            font-size: 16px;
+        }
+        .status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status.idle {
+            background: #e0e0e0;
+            color: #666;
+        }
+        .status.connecting {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+        .status.testing {
+            background: #fff8e1;
+            color: #ffa726;
+        }
+        .status.complete {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+        .status.failed {
+            background: #ffebee;
+            color: #d32f2f;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .metric {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+        }
+        .metric-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .metric-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+        }
+        .summary {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+            display: none;
+        }
+        .summary.show {
+            display: block;
+        }
+        .summary h2 {
+            color: #1976d2;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        .winner {
+            background: #fff9c4;
+            border-left: 4px solid #fbc02d;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+        }
+        @media (max-width: 600px) {
+            .controls {
+                flex-direction: column;
+            }
+            .control-group {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚡ Nostr Relay Speed Test</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="kind">Event Kind</label>
+                <select id="kind">
+                    <option value="1">1 (Text Note)</option>
+                    <option value="0">0 (Metadata)</option>
+                    <option value="3">3 (Contacts)</option>
+                    <option value="7">7 (Reaction)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="limit">Limit</label>
+                <input type="number" id="limit" value="100" min="1" max="100">
+            </div>
+            <div class="control-group">
+                <button id="testBtn" onclick="runTests()">Run Test</button>
+            </div>
+        </div>
+
+        <div id="results"></div>
+        
+        <div id="summary" class="summary"></div>
+    </div>
+
+    <script>
+        const relays = [
+            'wss://relay.damus.io',
+            'wss://relay.nosflare.com',
+            'wss://nostr.land',
+            'wss://relay.nostr.band'
+        ];
+
+        let testResults = [];
+
+        function createRelayCard(url) {
+            return `
+                <div class="relay-card" id="card-${btoa(url)}">
+                    <div class="relay-header">
+                        <div class="relay-url">${url}</div>
+                        <div class="status idle" id="status-${btoa(url)}">Idle</div>
+                    </div>
+                    <div class="metrics" id="metrics-${btoa(url)}"></div>
+                </div>
+            `;
+        }
+
+        function updateStatus(url, status, className) {
+            const statusEl = document.getElementById(`status-${btoa(url)}`);
+            const cardEl = document.getElementById(`card-${btoa(url)}`);
+            statusEl.textContent = status;
+            statusEl.className = `status ${className}`;
+            cardEl.className = `relay-card ${className}`;
+        }
+
+        function updateMetrics(url, metrics) {
+            const metricsEl = document.getElementById(`metrics-${btoa(url)}`);
+            metricsEl.innerHTML = `
+                <div class="metric">
+                    <div class="metric-label">Connection</div>
+                    <div class="metric-value">${metrics.connectionTime}ms</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">First Event</div>
+                    <div class="metric-value">${metrics.firstEventTime}ms</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">EOSE</div>
+                    <div class="metric-value">${metrics.eoseTime}ms</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Events Received</div>
+                    <div class="metric-value">${metrics.eventCount}</div>
+                </div>
+            `;
+        }
+
+        async function testRelay(url) {
+            const kind = document.getElementById('kind').value;
+            const limit = parseInt(document.getElementById('limit').value);
+            
+            const startTime = Date.now();
+            let connectionTime = null;
+            let firstEventTime = null;
+            let eoseTime = null;
+            let eventCount = 0;
+
+            return new Promise((resolve) => {
+                updateStatus(url, 'Connecting', 'connecting');
+                
+                const ws = new WebSocket(url);
+                const subscriptionId = 'speed-test-' + Math.random().toString(36).substr(2, 9);
+
+                const timeout = setTimeout(() => {
+                    ws.close();
+                    updateStatus(url, 'Timeout', 'failed');
+                    resolve({
+                        url,
+                        success: false,
+                        error: 'Timeout',
+                        connectionTime: null,
+                        firstEventTime: null,
+                        eoseTime: null,
+                        eventCount: 0
+                    });
+                }, 10000);
+
+                ws.onopen = () => {
+                    connectionTime = Date.now() - startTime;
+                    updateStatus(url, 'Testing', 'testing');
+                    
+                    const req = JSON.stringify([
+                        "REQ",
+                        subscriptionId,
+                        {
+                            "kinds": [parseInt(kind)],
+                            "limit": limit
+                        }
+                    ]);
+                    ws.send(req);
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data[0] === 'EVENT') {
+                        eventCount++;
+                        if (firstEventTime === null) {
+                            firstEventTime = Date.now() - startTime;
+                        }
+                    } else if (data[0] === 'EOSE') {
+                        eoseTime = Date.now() - startTime;
+                        clearTimeout(timeout);
+                        ws.close();
+                        
+                        const metrics = {
+                            connectionTime,
+                            firstEventTime: firstEventTime || 'N/A',
+                            eoseTime,
+                            eventCount
+                        };
+                        
+                        updateMetrics(url, metrics);
+                        updateStatus(url, 'Complete', 'complete');
+                        
+                        resolve({
+                            url,
+                            success: true,
+                            ...metrics
+                        });
+                    }
+                };
+
+                ws.onerror = () => {
+                    clearTimeout(timeout);
+                    updateStatus(url, 'Failed', 'failed');
+                    resolve({
+                        url,
+                        success: false,
+                        error: 'Connection error',
+                        connectionTime: null,
+                        firstEventTime: null,
+                        eoseTime: null,
+                        eventCount: 0
+                    });
+                };
+            });
+        }
+
+        async function runTests() {
+            const testBtn = document.getElementById('testBtn');
+            testBtn.disabled = true;
+            testBtn.textContent = 'Testing...';
+            
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = relays.map(createRelayCard).join('');
+            
+            document.getElementById('summary').classList.remove('show');
+            
+            testResults = await Promise.all(relays.map(testRelay));
+            
+            showSummary();
+            
+            testBtn.disabled = false;
+            testBtn.textContent = 'Run Test Again';
+        }
+
+        function showSummary() {
+            const successfulTests = testResults.filter(r => r.success);
+            
+            if (successfulTests.length === 0) {
+                return;
+            }
+
+            const fastest = successfulTests.reduce((prev, current) => 
+                (current.eoseTime < prev.eoseTime) ? current : prev
+            );
+
+            const avgConnectionTime = (successfulTests.reduce((sum, r) => sum + r.connectionTime, 0) / successfulTests.length).toFixed(0);
+            const avgEoseTime = (successfulTests.reduce((sum, r) => sum + r.eoseTime, 0) / successfulTests.length).toFixed(0);
+
+            const summaryDiv = document.getElementById('summary');
+            summaryDiv.innerHTML = `
+                <h2>📊 Test Summary</h2>
+                <p><strong>Tests completed:</strong> ${successfulTests.length} of ${testResults.length}</p>
+                <p><strong>Average connection time:</strong> ${avgConnectionTime}ms</p>
+                <p><strong>Average EOSE time:</strong> ${avgEoseTime}ms</p>
+                <div class="winner">
+                    <strong>🏆 Fastest Relay:</strong> ${fastest.url}<br>
+                    <strong>EOSE Time:</strong> ${fastest.eoseTime}ms
+                </div>
+            `;
+            summaryDiv.classList.add('show');
+        }
+
+        document.getElementById('results').innerHTML = relays.map(createRelayCard).join('');
+    </script>
+</body>
+</html>
